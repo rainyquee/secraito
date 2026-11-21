@@ -97,6 +97,19 @@ time{font-size:.85rem;font-weight:600}
 .cprow{flex-direction:column}.cprow input{width:100%}.btn{min-height:46px}
 }
 @media (hover:none){.btn:hover{transform:none;box-shadow:4px 4px 0 var(--ink)}}
+/* toast, dinding, reaksi, kartu */
+.toast{position:fixed;z-index:70;left:50%;top:76px;transform:translateX(-50%);width:min(92%,460px);display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 8px 8px 18px;background:var(--pine);border:3px solid var(--ink);border-radius:99px;box-shadow:4px 4px 0 var(--ink);font-weight:800}
+.toast[hidden]{display:none}
+.wall{margin-top:8px}
+.rx{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.rxb{display:inline-flex;gap:5px;align-items:center;padding:3px 10px;border:2px solid var(--ink);border-radius:99px;background:var(--card);color:var(--ink);font:700 .9rem/1.5 Archivo,sans-serif;cursor:pointer}
+.rxb[aria-pressed="true"]{background:var(--iris);box-shadow:2px 2px 0 var(--ink)}
+.rxb:disabled{opacity:.6;cursor:wait}
+.modal{position:fixed;z-index:80;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(95,60,78,.45)}
+.sheet{width:min(94vw,400px);max-height:94vh;overflow:auto;padding:16px}
+.sheet img{display:block;width:100%;height:auto;border:3px solid var(--ink);border-radius:12px;margin-bottom:12px;background:var(--paper)}
+.sheet .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+@media (max-width:560px){.toast{top:calc(12px + env(safe-area-inset-top,0px))}}
 </style>
 </head>
 <body>
@@ -136,7 +149,7 @@ function el(tag, attrs = {}, ...kids){
   e.append(...kids.flat().filter(x => x != null && x !== false));
   return e;
 }
-const show = (...n) => { disarmShake(); $app.replaceChildren(...n); };
+const show = (...n) => { disarmShake(); disarmWatch(); $app.replaceChildren(...n); };
 const page = (...k) => el("main", { class: "wrap pg" }, ...k);
 const say = (e,t,ok) => { e.textContent = t; e.className = "msg" + (ok ? " ok" : ""); };
 const dock = () => el("header", { class: "dock" },
@@ -334,8 +347,9 @@ function replyForm(m, name, key, existing){
     if (!t) return say(st, "Balasan masih kosong.");
     b.disabled = true;
     const { error } = await sb.rpc("reply_message", { p_username: name, p_key: key, p_id: m.id, p_reply: t });
+    if (error){ b.disabled = false; return say(st, "Balasan gagal dikirim. Coba lagi."); }
+    if (pubSet.has(String(m.id))) await sb.rpc("publish_message", { p_username: name, p_key: key, p_id: String(m.id), p_on: true });   // perbarui salinan di dinding
     b.disabled = false;
-    if (error) return say(st, "Balasan gagal dikirim. Coba lagi.");
     threadPage(name);
   };
   return el("div", { class: "rf" }, ta, b, st);
@@ -360,14 +374,29 @@ function threadCard(ms, name, owner, key, seen){
         ed.onclick = () => { ed.remove(); slot.append(replyForm(m, name, key, m.reply)); };
         acts.append(ed);
       } else slot.append(replyForm(m, name, key, ""));
+      const pid = String(m.id), pst = el("p", { class: "msg", role: "status" });
+      const shr = el("button", { class: "pill", type: "button" }, "Bagikan sebagai gambar");
+      shr.onclick = () => shareCard(name, m.body, m.reply || "", m.id);
+      const pub = el("button", { class: "pill", type: "button" }, pubSet.has(pid) ? "Hapus dari dinding" : "Tampilkan di dinding");
+      pub.onclick = async () => {
+        const on = !pubSet.has(pid);
+        pub.disabled = true; say(pst, "");
+        const r = asRes(await sb.rpc("publish_message", { p_username: name, p_key: key, p_id: pid, p_on: on }));
+        pub.disabled = false;
+        if (r.error) return say(pst, r.error.code === "PGRST202" ? "Dinding belum dipasang di server. Jalankan SQL-nya dulu." : "Gagal mengubah dinding. Coba lagi.");
+        if (on) pubSet.add(pid); else pubSet.delete(pid);
+        pub.textContent = on ? "Hapus dari dinding" : "Tampilkan di dinding";
+        refreshWall(name, key, true);
+      };
       const del = el("button", { class: "pill", type: "button" }, "Hapus pesan");
       del.onclick = async () => {
         if (!confirm("Hapus pesan ini beserta balasannya?")) return;
+        if (pubSet.has(pid)) await sb.rpc("publish_message", { p_username: name, p_key: key, p_id: pid, p_on: false });
         const { error } = await sb.rpc("delete_message", { p_username: name, p_key: key, p_id: m.id });
         if (!error) threadPage(name);
       };
-      acts.append(del);
-      turn.append(slot, acts);
+      acts.append(shr, pub, del);
+      turn.append(slot, acts, pst);
     }
     c.append(turn);
   }
@@ -461,6 +490,7 @@ async function sendFlow(o){
     return say(st, failMsg(r.error, name));
   }
   if (o.after) o.after(r);
+  pingBox(name);   // bangunkan pemilik yang sedang membuka kotaknya
   if (fx){ const f = fx.fly(); await fx.ready; threadPage(name); await f; }
   else { btn.disabled = false; threadPage(name); }
 }
@@ -523,8 +553,273 @@ function msgBlocks(msgs){
   return blocks;
 }
 
+/* ---------- 1. Realtime: pesan baru muncul sendiri ---------- */
+const BASE_TITLE = document.title;
+let watch = null;
+function disarmWatch(){
+  if (!watch) return;
+  clearInterval(watch.timer);
+  document.removeEventListener("visibilitychange", watch.vis);
+  try { if (watch.ch) sb.removeChannel(watch.ch); } catch {}
+  if (watch.toast) watch.toast.remove();
+  watch = null;
+  document.title = BASE_TITLE;
+}
+// pengirim: kirim "colekan" lewat Supabase Broadcast (tanpa tabel, tanpa RLS)
+function pingBox(name){
+  try {
+    const ch = sb.channel("kotak-" + name);
+    const bye = () => { try { sb.removeChannel(ch); } catch {} };
+    ch.subscribe(s => {
+      if (s === "SUBSCRIBED") Promise.resolve(ch.send({ type: "broadcast", event: "baru", payload: {} })).catch(() => {}).then(() => setTimeout(bye, 700));
+    });
+    setTimeout(bye, 8000);
+  } catch {}
+}
+function notifRow(){
+  if (!("Notification" in window)) return null;
+  const b = el("button", { class: "pill", type: "button", style: "border-color:var(--ink)" });
+  const paint = () => {
+    const p = Notification.permission;
+    b.textContent = p === "granted" ? "Notifikasi aktif" : p === "denied" ? "Notifikasi diblokir browser" : "Aktifkan notifikasi pesan baru";
+    b.disabled = p !== "default";
+  };
+  b.onclick = async () => { try { await Notification.requestPermission(); } catch {} paint(); };
+  paint();
+  return b;
+}
+function armWatch(name, key, data){
+  disarmWatch();
+  const known = new Set(data.messages.map(m => String(m.id)));
+  let busy = false, fresh = 0;
+  const w = watch = { ch: null, timer: 0, vis: null, toast: null };
+  const toast = el("div", { class: "toast", role: "status", hidden: true });
+  const txt = el("span");
+  const open = el("button", { class: "pill solid", type: "button" }, "Tampilkan");
+  toast.append(txt, open); document.body.append(toast); w.toast = toast;
+  const setTitle = () => { document.title = fresh ? "(" + fresh + ") " + BASE_TITLE : BASE_TITLE; };
+  const reload = () => { fresh = 0; threadPage(name); };
+  open.onclick = reload;
+  const hasDraft = () => [...document.querySelectorAll("textarea")].some(t => t.value.trim());
+  const alert1 = n => {
+    try { if (navigator.vibrate) navigator.vibrate(60); } catch {}
+    if (document.hidden && "Notification" in window && Notification.permission === "granted"){
+      try { new Notification("Kotak rahasia", { body: n + " pesan baru di @" + name, tag: "sk-baru" }); } catch {}
+    }
+  };
+  const check = async () => {
+    if (busy || watch !== w) return;
+    busy = true;
+    try {
+      const { data: d, error } = await sb.rpc("get_thread", { p_username: name, p_sender: SENDER, p_key: key });
+      if (error || watch !== w || !d || !Array.isArray(d.messages)) return;
+      const nu = d.messages.filter(m => !known.has(String(m.id)));
+      if (!nu.length) return;
+      nu.forEach(m => known.add(String(m.id)));
+      fresh += nu.length; setTitle(); alert1(fresh);
+      // kalau sedang menulis balasan atau sedang scroll jauh, jangan ganggu: tampilkan toast saja
+      if (!hasDraft() && !document.hidden && scrollY < 120) return reload();
+      txt.textContent = fresh + " pesan baru"; toast.hidden = false;
+    } finally { busy = false; }
+  };
+  try { w.ch = sb.channel("kotak-" + name).on("broadcast", { event: "baru" }, () => check()).subscribe(); } catch {}
+  w.timer = setInterval(check, 20000);   // cadangan kalau Realtime tidak aktif
+  w.vis = () => { if (document.hidden) return; if (fresh && !hasDraft()) reload(); else check(); };
+  document.addEventListener("visibilitychange", w.vis);
+}
+
+/* ---------- 2. Kartu gambar untuk story ---------- */
+async function makeCard(name, body, reply, id){
+  try { if (document.fonts) await Promise.race([Promise.all([document.fonts.load("900 40px Archivo"), document.fonts.load("800 40px Archivo"), document.fonts.load("700 40px Archivo")]), sleep(1500)]); } catch {}
+  const W = 1080, H = 1920, FF = "Archivo, system-ui, sans-serif";
+  const S = getComputedStyle(document.documentElement), v = k => S.getPropertyValue(k).trim();
+  const ink = v("--ink"), card = v("--card");
+  const tints = [v("--sunS"), v("--irisS"), v("--pineS")];
+  const tint = tints[(parseInt(String(id).replace(/\D/g, "").slice(-6) || "0", 10) || 0) % 3];
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+  const g = cv.getContext("2d");
+  if (!g) return null;
+  const rr = (x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
+  const box = (x, y, w, h, fill, r = 36, off = 14) => { g.fillStyle = ink; rr(x + off, y + off, w, h, r); g.fill(); g.fillStyle = fill; rr(x, y, w, h, r); g.fill(); g.lineWidth = 8; g.strokeStyle = ink; g.stroke(); };
+  const chip = (x, y, t, fill) => {
+    g.font = "800 32px " + FF; const w = g.measureText(t).width + 44;
+    g.fillStyle = ink; rr(x + 5, y + 5, w, 56, 14); g.fill();
+    g.fillStyle = fill; rr(x, y, w, 56, 14); g.fill(); g.lineWidth = 5; g.strokeStyle = ink; g.stroke();
+    g.fillStyle = ink; g.textAlign = "left"; g.textBaseline = "middle"; g.fillText(t, x + 22, y + 31);
+  };
+  const wrap = (t, font, maxW) => {
+    g.font = font; const lines = [];
+    for (const para of String(t).split("\n")){
+      let cur = "";
+      for (const word of para.split(/\s+/).filter(Boolean)){
+        let wd = word;
+        while (g.measureText(wd).width > maxW){
+          const cp = Array.from(wd); let n = cp.length;
+          while (n > 1 && g.measureText(cp.slice(0, n).join("")).width > maxW) n--;
+          if (cur){ lines.push(cur); cur = ""; }
+          lines.push(cp.slice(0, n).join("")); wd = cp.slice(n).join("");
+        }
+        const t2 = cur ? cur + " " + wd : wd;
+        if (g.measureText(t2).width <= maxW) cur = t2; else { lines.push(cur); cur = wd; }
+      }
+      lines.push(cur);
+    }
+    return lines;
+  };
+  const fit = (t, maxW, maxH, weight, start, min) => {
+    let size = start, lines;
+    for (;;){
+      lines = wrap(t, weight + " " + size + "px " + FF, maxW);
+      if (lines.length * size * 1.32 <= maxH || size <= min) break;
+      size -= 4;
+    }
+    const lh = size * 1.32, maxL = Math.max(1, Math.floor(maxH / lh));
+    if (lines.length > maxL){ lines = lines.slice(0, maxL); lines[maxL - 1] = lines[maxL - 1].slice(0, -2).trimEnd() + "…"; }
+    return { lines, size, lh, weight };
+  };
+  const draw = (f, x, y) => { g.font = f.weight + " " + f.size + "px " + FF; g.fillStyle = ink; g.textAlign = "left"; g.textBaseline = "top"; f.lines.forEach((l, i) => g.fillText(l, x, y + i * f.lh)); };
+  const fitW = (t, wt, size, min, maxW) => { while (size > min){ g.font = wt + " " + size + "px " + FF; if (g.measureText(t).width <= maxW) break; size -= 2; } return size; };
+
+  g.fillStyle = v("--paper"); g.fillRect(0, 0, W, H);
+  // kepala
+  const nm = "@" + name;
+  g.fillStyle = ink; g.textAlign = "left"; g.textBaseline = "top";
+  g.font = "700 44px " + FF; g.fillText("pesan anonim untuk", 70, 110);
+  const ns = fitW(nm, "900", 120, 40, 940);
+  g.font = "900 " + ns + "px " + FF; g.fillText(nm, 70, 172);
+  // isi
+  const PAD = 56, BW = 940, TW = BW - PAD * 2, CH = 56;
+  const mf = fit(body, TW, reply ? 480 : 980, "800", 76, 34);
+  const rf = reply ? fit(reply, TW, 340, "700", 58, 30) : null;
+  const mh = PAD + CH + 30 + mf.lines.length * mf.lh + PAD;
+  const rh = rf ? PAD + CH + 30 + rf.lines.length * rf.lh + PAD : 0;
+  const total = mh + (rf ? 60 + rh : 0);
+  let y = 340 + Math.max(0, (1280 - total) / 2);
+  box(70, y, BW, mh, tint);
+  chip(70 + PAD, y + PAD, "Pesan anonim", v("--sun"));
+  draw(mf, 70 + PAD, y + PAD + CH + 30);
+  if (rf){
+    y += mh + 60;
+    box(70, y, BW, rh, card);
+    chip(70 + PAD, y + PAD, "Balasan @" + name, v("--iris"));
+    draw(rf, 70 + PAD, y + PAD + CH + 30);
+  }
+  // kaki
+  box(70, 1680, BW, 170, v("--pine"), 40);
+  const t1 = "Kirim pesan anonim ke " + nm, t2 = shareUrl(name).replace(/^https?:\/\//, "");
+  const s1 = fitW(t1, "900", 44, 26, 860), s2 = fitW(t2, "700", 34, 18, 860);
+  g.fillStyle = ink; g.textAlign = "center"; g.textBaseline = "middle";
+  g.font = "900 " + s1 + "px " + FF; g.fillText(t1, 70 + BW / 2, 1740);
+  g.font = "700 " + s2 + "px " + FF; g.fillText(t2, 70 + BW / 2, 1798);
+  return new Promise(res => { try { cv.toBlob(b => res(b), "image/png"); } catch { res(null); } });
+}
+
+async function shareCard(name, body, reply, id){
+  let withReply = !!reply, url = null, blob = null;
+  const img = el("img", { alt: "Pratinjau kartu" });
+  const st = el("p", { class: "msg", role: "status" });
+  const row = el("div", { class: "row" });
+  const sheet = el("div", { class: "box sheet", role: "dialog", "aria-label": "Kartu untuk dibagikan" }, img, row, st);
+  const modal = el("div", { class: "modal" }, sheet);
+  const esc = e => { if (e.key === "Escape") done(); };
+  const done = () => { if (url) URL.revokeObjectURL(url); modal.remove(); removeEventListener("keydown", esc); };
+  modal.onclick = e => { if (e.target === modal) done(); };
+  addEventListener("keydown", esc);
+  const fname = "kotak-rahasia-" + name + ".png";
+  let canShare = false;
+  try { canShare = !!(navigator.canShare && navigator.share && navigator.canShare({ files: [new File([""], "a.png", { type: "image/png" })] })); } catch {}
+  const shareB = el("button", { class: "btn", type: "button" }, "Bagikan");
+  const saveB = el("button", { class: canShare ? "btn alt" : "btn", type: "button" }, "Simpan gambar");
+  const closeB = el("button", { class: "pill", type: "button", style: "border-color:var(--ink)", onclick: done }, "Tutup");
+  shareB.onclick = async () => {
+    if (!blob) return;
+    try { await navigator.share({ files: [new File([blob], fname, { type: "image/png" })], text: "Kirim pesan anonim ke @" + name + ": " + shareUrl(name) }); }
+    catch (e) { if (e && e.name !== "AbortError") say(st, "Menu bagikan gagal dibuka. Pakai Simpan gambar."); }
+  };
+  saveB.onclick = () => {
+    if (!url) return;
+    const a = el("a", { href: url, download: fname }); document.body.append(a); a.click(); a.remove();
+  };
+  row.append(...(canShare ? [shareB] : []), saveB);
+  if (reply){
+    const tg = el("button", { class: "pill", type: "button", style: "border-color:var(--ink)" }, "Tanpa balasan");
+    tg.onclick = () => { withReply = !withReply; tg.textContent = withReply ? "Tanpa balasan" : "Sertakan balasan"; render(); };
+    row.append(tg);
+  }
+  row.append(closeB);
+  const render = async () => {
+    say(st, "Membuat kartu…");
+    const b = await makeCard(name, body, withReply ? reply : "", id);
+    if (!modal.isConnected) return;
+    if (!b) return say(st, "Browser ini tidak bisa membuat gambar.");
+    if (url) URL.revokeObjectURL(url);
+    blob = b; url = URL.createObjectURL(b); img.src = url; say(st, "");
+  };
+  document.body.append(modal);
+  render();
+}
+
+/* ---------- 3. Dinding publik + reaksi emoji ---------- */
+const RX = [["heart", "❤️"], ["laugh", "😂"], ["fire", "🔥"], ["cry", "🥹"], ["like", "👍"]];
+let pubSet = new Set(), wallEl = null;
+
+function wallCard(name, p, owner, key){
+  const c = el("article", { class: "box mc" });
+  c.append(el("div", { class: "meta" }, el("span", { class: "tag" }, "Anonim"), p.created_at && el("time", {}, fmt(p.created_at))), el("p", { class: "body" }, p.body));
+  if (p.reply) c.append(el("div", { class: "reply" }, el("span", { class: "tag i" }, "Balasan @" + name), el("p", { class: "body" }, p.reply), p.replied_at && el("time", {}, fmt(p.replied_at))));
+  const rx = el("div", { class: "rx" });
+  const mine = new Set(p.mine || []);
+  let counts = p.reactions || {};
+  const paint = () => rx.replaceChildren(...RX.map(([k, e]) => {
+    const b = el("button", { class: "rxb", type: "button", "aria-pressed": String(mine.has(k)), "aria-label": "Reaksi " + e }, e, counts[k] ? el("span", {}, String(counts[k])) : null);
+    b.onclick = async () => {
+      b.disabled = true;
+      const r = await sb.rpc("react_wall", { p_username: name, p_id: String(p.id), p_code: k, p_sender: SENDER });
+      if (!r.error && r.data && r.data.ok){ counts = r.data.reactions || {}; mine.clear(); (r.data.mine || []).forEach(x => mine.add(x)); }
+      paint();
+    };
+    return b;
+  }));
+  paint();
+  const acts = el("div", { class: "acts" });
+  const shr = el("button", { class: "pill", type: "button" }, "Bagikan sebagai gambar");
+  shr.onclick = () => shareCard(name, p.body, p.reply || "", p.id);
+  acts.append(shr);
+  if (owner){
+    const off = el("button", { class: "pill", type: "button" }, "Hapus dari dinding");
+    off.onclick = async () => {
+      off.disabled = true;
+      const r = asRes(await sb.rpc("publish_message", { p_username: name, p_key: key, p_id: String(p.id), p_on: false }));
+      if (r.error){ off.disabled = false; return; }
+      refreshWall(name, key, true);
+    };
+    acts.append(off);
+  }
+  c.append(rx, acts);
+  return c;
+}
+
+function wallSection(name, key, owner, items){
+  if (!items.length && !owner) return null;
+  const sec = el("section", { class: "wall" }, el("div", { class: "sh" }, el("h2", {}, "Dinding @" + name + (items.length ? " (" + items.length + ")" : ""))));
+  if (!items.length) sec.append(el("div", { class: "box note" }, "Belum ada pesan di dinding. Pilih \"Tampilkan di dinding\" pada pesan mana pun di atas."));
+  items.forEach(p => sec.append(wallCard(name, p, owner, key)));
+  return sec;
+}
+
+async function refreshWall(name, key, owner){
+  const r = await sb.rpc("wall_list", { p_username: name, p_sender: SENDER });
+  if (r.error || !Array.isArray(r.data)) return false;
+  pubSet = new Set(r.data.map(p => String(p.id)));
+  const fresh = wallSection(name, key, owner, r.data);
+  if (wallEl && wallEl.isConnected){ if (fresh) wallEl.replaceWith(fresh); else wallEl.remove(); }
+  wallEl = fresh;
+  return true;
+}
+
 /* ---------- Tampilan pengunjung ---------- */
 function visitorView(name, data){
+  wallEl = data.wall ? wallSection(name, null, false, data.wall) : null;
   const ta = el("textarea", { maxlength: "500", placeholder: "Tulis pesanmu di sini. Namamu tidak akan terlihat.", "aria-label": "Pesan" });
   const cnt = el("span", { class: "cnt" }, "0/500");
   ta.oninput = () => cnt.textContent = ta.value.length + "/500";
@@ -570,8 +865,9 @@ function visitorView(name, data){
   show(dock(), page(
     el("p", { class: "lbl" }, "Kirim pesan anonim ke"),
     title,
-    el("div", { class: "box compose", style: "margin-top:22px" }, ta, el("div", { class: "opts" }, oNo, oPw), modeHint, pwBox, el("div", { class: "bar" }, cnt, btn), st),
+    el("div", { class: "box compose", style: "margin-top:22px" }, ta, el("div", { class: "opts" }, oNo, oPw), modeHint, pwBox, el("div", { class: "bar" }, cnt, btn), st, el("p", { class: "hint", style: "margin:10px 0 0" }, "Pemilik kotak bisa menampilkan pesan pilihan (tanpa identitasmu) di dinding publik.")),
     ...(data.can_view ? [] : [resumePanel(name)]),
+    ...(wallEl ? [wallEl] : []),
     ...thread));
   if (!data.can_view){
     let taps = 0, last = 0;   // easter egg 1: ketuk @username 5 kali cepat
@@ -586,6 +882,7 @@ function visitorView(name, data){
 
 /* ---------- Tampilan pemilik ---------- */
 function ownerView(name, key, data){
+  wallEl = data.wall ? wallSection(name, key, true, data.wall) : null;
   const seen = seenSet(name);
   const forget = el("button", { class: "pill", type: "button" }, "Keluar dari kotak ini");
   forget.onclick = () => {
@@ -600,9 +897,12 @@ function ownerView(name, key, data){
     el("div", { style: "margin-top:24px" },
       copyRow("Tautan untuk dibagikan", shareUrl(name), "Tempel di bio atau status. Siapa saja bisa mengirim pesan lewat tautan ini."),
       copyRow("Tautan pribadi", shareUrl(name) + "#k=" + key, "Jangan dibagikan. Buka tautan ini di HP atau laptop lain agar bisa membalas dari sana. Simpan juga kalau-kalau data browser terhapus.", "priv")),
+    el("div", { style: "margin:-6px 0 0" }, notifRow(), el("p", { class: "hint", style: "margin:8px 0 0" }, "Pesan baru muncul sendiri selama kotakmu terbuka di tab browser.")),
     el("div", { class: "sh" }, el("h2", {}, "Pesan masuk (" + data.messages.length + ")"), el("button", { class: "pill", type: "button", onclick: () => threadPage(name) }, "Muat ulang")),
     ...(data.messages.length ? msgBlocks(data.messages).map(bl => threadCard(bl, name, true, key, seen)) : [el("div", { class: "box note" }, "Belum ada pesan. Bagikan tautanmu dulu.")]),
+    ...(wallEl ? [wallEl] : []),
     el("div", { class: "foot" }, forget)));
+  armWatch(name, key, data);
 }
 
 async function threadPage(name){
@@ -613,11 +913,15 @@ async function threadPage(name){
   if (!data.exists) return show(dock(), page(
     el("div", { class: "box note" }, el("h2", {}, "Kotak tidak ditemukan"), el("p", {}, "Belum ada kotak bernama @" + name + "."),
       el("a", { class: "btn", href: "./?new=1" }, "Buat kotak"))));
+  const wallP = Promise.resolve(sb.rpc("wall_list", { p_username: name, p_sender: SENDER }));   // dinding publik (opsional)
   // kelompokkan pesan berpassword (fitur opsional; diabaikan kalau SQL-nya belum dipasang)
   if (data.owner || (data.can_view && data.messages.length)){
     const tm = await sb.rpc("thread_map", { p_username: name });
     if (!tm.error && tm.data) data.messages.forEach(m => { m.thread = tm.data[String(m.id)] || null; });
   }
+  const wr = await wallP;
+  data.wall = (!wr.error && Array.isArray(wr.data)) ? wr.data : null;
+  pubSet = new Set((data.wall || []).map(p => String(p.id)));
   data.owner ? ownerView(name, key, data) : visitorView(name, data);
 }
 
