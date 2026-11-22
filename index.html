@@ -318,25 +318,60 @@ function linkRow(icon, label, value, cls, aria, sub, tip){
   return el("div", { class: "lk " + (cls || ""), title: tip || null }, ico(icon), el("span", { class: "v" }, label, sub && el("small", {}, " · " + sub)), b);
 }
 
-// opsi bagikan per platform: go = buka tautan dengan teks terisi; copy = salin tautan lalu buka halamannya; sys = menu bagikan bawaan HP
+// opsi bagikan per platform. Jenis aksi:
+//  web  = buka halaman web langsung dengan teks terisi (tanpa salin)
+//  app  = salin tautan lalu buka aplikasinya di HP (ios/and = skema aplikasi); di komputer buka halaman web-nya
+//  sys  = menu bagikan bawaan HP (pilih Instagram/TikTok); di komputer salin tautan lalu buka halaman web-nya
+//  copy = salin tautan lalu buka halaman web yang dituju
+// txt = teks yang disalin (bawaan: tautan saja); tip = petunjuk singkat setelah tersalin
+const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/i.test(navigator.platform));
+const ANDROID = /Android/i.test(navigator.userAgent);
 const PLAT = n => {
-  const u = shareUrl(n), t = "Kirim pesan anonim ke @" + n + " \u{1F92B}", e = encodeURIComponent, q = e(t + " " + u);
-  const cp = (open, tip) => ({ copy: open, tip }), go = href => ({ go: href }), sys = { sys: 1 };
+  const u = shareUrl(n), t = "Kirim pesan anonim ke @" + n + " \u{1F92B}", e = encodeURIComponent, full = t + " " + u;
   return [
-    { k: "ig", name: "Instagram", o: [["Bio", cp("https://www.instagram.com/accounts/edit/", "Tempel di kolom Situs web")], ["Story", cp("https://www.instagram.com/", "Tempel sebagai stiker tautan")], ["DM", sys]] },
-    { k: "x", name: "X", o: [["Bio", cp("https://x.com/settings/profile", "Tempel di kolom Situs web")], ["Tweet", go("https://twitter.com/intent/tweet?text=" + e(t) + "&url=" + e(u))], ["DM", go("https://twitter.com/messages/compose?text=" + q)]] },
-    { k: "wa", name: "WhatsApp", o: [["Bio", cp("https://wa.me/", "Tempel di Info")], ["DM", go("https://wa.me/?text=" + q)], ["Status", cp("https://wa.me/", "Tempel di status")]] },
-    { k: "tt", name: "TikTok", o: [["Bio", cp("https://www.tiktok.com/", "Tempel di Bio")], ["DM", sys]] },
-    { k: "fb", name: "Facebook", o: [["Messenger", go("fb-messenger://share?link=" + e(u))], ["Post", go("https://www.facebook.com/sharer/sharer.php?u=" + e(u))], ["Bio", cp("https://www.facebook.com/me", "Tempel di Tautan")]] }
+    { k: "ig", name: "Instagram", o: [
+      ["Bio", { copy: "https://www.instagram.com/accounts/edit/", tip: "Tempel di kolom Situs web" }],
+      ["Story", { app: { ios: "instagram://story-camera", and: "intent://story-camera#Intent;package=com.instagram.android;scheme=instagram;end", web: "https://www.instagram.com/" }, tip: "Tempel sebagai stiker tautan" }],
+      ["DM", { sys: 1, web: "https://www.instagram.com/direct/inbox/", tip: "Tempel di DM" }]] },
+    { k: "x", name: "X", o: [
+      ["Bio", { copy: "https://x.com/settings/profile", tip: "Tempel di kolom Situs web" }],
+      ["Tweet", { web: "https://x.com/intent/tweet?text=" + e(t) + "&url=" + e(u) }],
+      ["DM", { copy: "https://x.com/messages/compose", txt: full, tip: "Pilih penerima lalu tempel pesannya" }]] },
+    { k: "wa", name: "WhatsApp", o: [
+      ["Bio", { app: { ios: "whatsapp://", and: "whatsapp://", web: "https://web.whatsapp.com/" }, tip: "Setelan > ketuk profilmu > Info, lalu tempel" }],
+      ["DM", { web: "https://wa.me/?text=" + e(full) }],
+      ["Status", { app: { ios: "whatsapp://", and: "whatsapp://", web: "https://web.whatsapp.com/" }, tip: "Tab Pembaruan > Status > tulis teks, lalu tempel" }]] },
+    { k: "tt", name: "TikTok", o: [
+      ["Bio", { copy: "https://www.tiktok.com/", tip: "Profil > Edit profil > Tautan, lalu tempel" }],
+      ["DM", { sys: 1, web: "https://www.tiktok.com/messages", tip: "Tempel di DM" }]] },
+    { k: "fb", name: "Facebook", o: [
+      ["Messenger", { app: { ios: "fb-messenger://share?link=" + e(u), and: "intent://share/?link=" + e(u) + "#Intent;scheme=fb-messenger;package=com.facebook.orca;end", web: "https://www.messenger.com/" }, tip: "Tempel di obrolan" }],
+      ["Post", { web: "https://www.facebook.com/sharer/sharer.php?u=" + e(u) }],
+      ["Bio", { copy: "https://www.facebook.com/me", tip: "Edit profil > Tautan, lalu tempel" }]] }
   ];
 };
+const openWeb = url => { const a = el("a", { href: url, target: "_blank", rel: "noopener noreferrer" }); document.body.append(a); a.click(); a.remove(); };
+const copyTxt = t => { try { navigator.clipboard.writeText(t).catch(() => {}); } catch {} };
+function openApp(a, tip, st){
+  if (!MOBILE) return openWeb(a.web);
+  let left = false;
+  const onVis = () => { if (document.hidden) left = true; };
+  document.addEventListener("visibilitychange", onVis);
+  location.href = ANDROID && a.and ? a.and : a.ios;
+  setTimeout(() => {
+    document.removeEventListener("visibilitychange", onVis);
+    if (!left && !document.hidden) say(st, "Aplikasinya tidak terbuka otomatis. Buka manual, tautannya sudah disalin. " + tip + ".", true);
+  }, 1600);
+}
 function runShare(n, a, st){
-  const u = shareUrl(n);
-  if (a.go) return void window.open(a.go, "_blank", "noopener");
-  if (a.sys && navigator.share) return void navigator.share({ text: "Kirim pesan anonim ke @" + n, url: u }).catch(() => {});
-  try { navigator.clipboard.writeText(u).catch(() => {}); } catch {}
-  say(st, "Tautan disalin. " + (a.tip || "Tempel di aplikasinya") + ".", true);
-  if (a.copy) window.open(a.copy, "_blank", "noopener");
+  const u = shareUrl(n), tip = a.tip || "Tempel di aplikasinya";
+  if (a.web && !a.sys) return void openWeb(a.web);   // buka langsung dengan teks terisi
+  if (a.sys && MOBILE && navigator.share) return void navigator.share({ text: "Kirim pesan anonim ke @" + n, url: u }).catch(() => {});
+  copyTxt(a.txt || u);
+  say(st, (a.txt ? "Pesan disalin. " : "Tautan disalin. ") + tip + ".", true);
+  if (a.app) return void openApp(a.app, tip, st);
+  const w = a.copy || a.web;
+  if (w) openWeb(w);
 }
 function socialRow(name){
   const st = el("p", { class: "msg", role: "status", style: "margin:0 0 8px;min-height:0" });
