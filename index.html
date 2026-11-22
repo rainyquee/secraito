@@ -882,7 +882,10 @@ async function makeCard(name, body, reply, id, turns){
       const room = (1280 - GAP * (L.length - 1) - L.length * (P * 2 + CH2 + 20)) / L.length;
       L.forEach(x => { const m = Math.max(1, Math.floor(room / (x.px * 1.32))); if (x.lines.length > m){ x.lines = x.lines.slice(0, m); x.lines[m - 1] = x.lines[m - 1].slice(0, -2).trimEnd() + "…"; } });
     }
-    let y = 340 + Math.max(0, (1280 - tot()) / 2);
+    const T = tot(), k = Math.min(1, 1280 / T);   // k < 1: runtunan terlalu panjang, seluruh susunan diperkecil agar tidak menimpa kaki kartu
+    let y = 340 + Math.max(0, (1280 - T) / 2);
+    g.save();
+    if (k < 1){ g.translate(540, 340); g.scale(k, k); g.translate(-540, -340); y = 340; }
     L.forEach((x, i) => {
       const h = hh(x);
       box(70, y, BW2, h, x.k ? card : tints[i % 3], 30, 10);
@@ -890,6 +893,7 @@ async function makeCard(name, body, reply, id, turns){
       draw({ lines: x.lines, size: x.px, lh: x.px * 1.32, weight: x.w }, 70 + P, y + P + CH2 + 20);
       y += h + GAP;
     });
+    g.restore();
   };
   // isi
   if (turns) drawChain(); else {
