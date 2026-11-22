@@ -138,6 +138,7 @@ time{font-size:.85rem;font-weight:600}
 .lk small{font-weight:600;opacity:.6}
 .lk .ib{width:38px;height:38px}
 .soc{display:flex;gap:8px;margin:0 0 10px}
+.tut{margin:0 0 12px;padding:12px 14px;border:3px solid var(--ink);border-radius:14px;background:var(--card);font-size:.92rem;line-height:1.5}.tut .tt{margin:0 0 6px;font-weight:800}.tut ol{margin:0 0 8px;padding-left:20px}.tut li{margin:3px 0}.tut .hint{margin:0 0 8px}
 .soc .ib{border-color:var(--ink);background:var(--card);box-shadow:2px 2px 0 var(--ink)}
 .soc .ib[aria-pressed="true"]{background:var(--iris)}
 .socopt{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}.socopt[hidden]{display:none}
@@ -323,31 +324,34 @@ function linkRow(icon, label, value, cls, aria, sub, tip){
 //  app  = salin tautan lalu buka aplikasinya di HP (ios/and = skema aplikasi); di komputer buka halaman web-nya
 //  sys  = menu bagikan bawaan HP (pilih Instagram/TikTok); di komputer salin tautan lalu buka halaman web-nya
 //  copy = salin tautan lalu buka halaman web yang dituju
+//  tut  = tutorial: tautan disalin, lalu langkah-langkah memasangnya tampil di bawah (untuk yang tidak punya tautan langsung)
 // txt = teks yang disalin (bawaan: tautan saja); tip = petunjuk singkat setelah tersalin
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/i.test(navigator.platform));
 const ANDROID = /Android/i.test(navigator.userAgent);
+const NOTE_MENU = "Nama menu bisa sedikit berbeda antar versi aplikasi.";
+const tu = (title, steps, note) => ({ tut: { title, steps, note: note || NOTE_MENU } });
 const PLAT = n => {
   const u = shareUrl(n), t = "Kirim pesan anonim ke @" + n + " \u{1F92B}", e = encodeURIComponent, full = t + " " + u;
   return [
     { k: "ig", name: "Instagram", o: [
-      ["Bio", { copy: "https://www.instagram.com/accounts/edit/", tip: "Tempel di kolom Situs web" }],
-      ["Story", { app: { ios: "instagram://story-camera", and: "intent://story-camera#Intent;package=com.instagram.android;scheme=instagram;end", web: "https://www.instagram.com/" }, tip: "Tempel sebagai stiker tautan" }],
+      ["Bio", tu("Pasang di Bio Instagram", ["Buka Instagram, ketuk foto profilmu di pojok kanan bawah.", "Ketuk Edit profil.", "Ketuk Tautan, lalu Tambah tautan eksternal.", "Tempel tautan (sudah disalin), lalu ketuk Selesai."])],
+      ["Story", tu("Pasang di Story Instagram", ["Buka Instagram, ketuk + lalu pilih Cerita (atau geser kanan dari Beranda).", "Pilih atau ambil foto/video. Kamu bisa memakai kartu gambar dari tombol bagikan di pesan.", "Ketuk ikon stiker, lalu pilih stiker Tautan.", "Tempel tautan (sudah disalin), ketuk Selesai, lalu bagikan."])],
       ["DM", { sys: 1, web: "https://www.instagram.com/direct/inbox/", tip: "Tempel di DM" }]] },
     { k: "x", name: "X", o: [
-      ["Bio", { copy: "https://x.com/settings/profile", tip: "Tempel di kolom Situs web" }],
+      ["Bio", tu("Pasang di Bio X", ["Buka X, ketuk fotomu lalu Profil.", "Ketuk Edit profil.", "Isi kolom Situs web dengan tautan (sudah disalin).", "Ketuk Simpan."])],
       ["Tweet", { web: "https://x.com/intent/tweet?text=" + e(t) + "&url=" + e(u) }],
       ["DM", { copy: "https://x.com/messages/compose", txt: full, tip: "Pilih penerima lalu tempel pesannya" }]] },
     { k: "wa", name: "WhatsApp", o: [
-      ["Bio", { app: { ios: "whatsapp://", and: "whatsapp://", web: "https://web.whatsapp.com/" }, tip: "Setelan > ketuk profilmu > Info, lalu tempel" }],
+      ["Bio", tu("Pasang di Info WhatsApp", ["Buka WhatsApp, masuk ke Setelan (iPhone: tab Anda; Android: titik tiga lalu Setelan).", "Ketuk namamu di bagian atas.", "Ketuk Info, lalu tempel tautan (sudah disalin).", "Simpan."])],
       ["DM", { web: "https://wa.me/?text=" + e(full) }],
-      ["Status", { app: { ios: "whatsapp://", and: "whatsapp://", web: "https://web.whatsapp.com/" }, tip: "Tab Pembaruan > Status > tulis teks, lalu tempel" }]] },
+      ["Status", tu("Pasang di Status WhatsApp", ["Buka WhatsApp, pilih tab Pembaruan.", "Ketuk ikon pensil untuk status teks (atau + untuk foto/video).", "Tempel tautan (sudah disalin) di status.", "Ketuk tombol kirim."])]] },
     { k: "tt", name: "TikTok", o: [
-      ["Bio", { copy: "https://www.tiktok.com/", tip: "Profil > Edit profil > Tautan, lalu tempel" }],
-      ["DM", { sys: 1, web: "https://www.tiktok.com/messages", tip: "Tempel di DM" }]] },
+      ["Bio", tu("Pasang di Bio TikTok", ["Buka TikTok, ketuk Profil, lalu Edit profil.", "Cari kolom Tautan (kalau ada), lalu tempel tautan (sudah disalin).", "Kalau kolom Tautan tidak ada, tempel saja di kolom Bio sebagai teks.", "Simpan."], "Kolom Tautan hanya muncul di akun yang memenuhi syarat dari TikTok. " + NOTE_MENU)],
+      ["DM", tu("Kirim lewat DM TikTok", ["Buka TikTok, ketuk Kotak masuk.", "Ketuk ikon pesan baru, lalu pilih orang yang dituju.", "Tempel tautan (sudah disalin) di kolom pesan, lalu kirim."])]] },
     { k: "fb", name: "Facebook", o: [
       ["Messenger", { app: { ios: "fb-messenger://share?link=" + e(u), and: "intent://share/?link=" + e(u) + "#Intent;scheme=fb-messenger;package=com.facebook.orca;end", web: "https://www.messenger.com/" }, tip: "Tempel di obrolan" }],
       ["Post", { web: "https://www.facebook.com/sharer/sharer.php?u=" + e(u) }],
-      ["Bio", { copy: "https://www.facebook.com/me", tip: "Edit profil > Tautan, lalu tempel" }]] }
+      ["Bio", tu("Pasang di Bio Facebook", ["Buka Facebook, ketuk fotomu untuk membuka profil.", "Ketuk Edit profil.", "Cari bagian Tautan (atau Bio), lalu tambahkan tautan.", "Tempel tautan (sudah disalin), lalu Simpan."])]] }
   ];
 };
 const openWeb = url => { const a = el("a", { href: url, target: "_blank", rel: "noopener noreferrer" }); document.body.append(a); a.click(); a.remove(); };
@@ -363,8 +367,20 @@ function openApp(a, tip, st){
     if (!left && !document.hidden) say(st, "Aplikasinya tidak terbuka otomatis. Buka manual, tautannya sudah disalin. " + tip + ".", true);
   }, 1600);
 }
-function runShare(n, a, st){
+function runShare(n, a, st, tb){
   const u = shareUrl(n), tip = a.tip || "Tempel di aplikasinya";
+  if (tb) tb.hidden = true;
+  if (a.tut){   // tutorial: salin tautan, tampilkan langkah-langkahnya
+    copyTxt(u);
+    say(st, "Tautan disalin.", true);
+    if (tb){
+      const again = el("button", { class: "pill", type: "button", style: "border-color:var(--ink)" }, "Salin tautan lagi");
+      again.onclick = async () => { try { await navigator.clipboard.writeText(u); again.textContent = "Tersalin"; } catch { prompt("Salin tautan:", u); } };
+      tb.replaceChildren(el("p", { class: "tt" }, a.tut.title), el("ol", {}, ...a.tut.steps.map(x => el("li", {}, x))), el("p", { class: "hint" }, a.tut.note), again);
+      tb.hidden = false;
+    }
+    return;
+  }
   if (a.web && !a.sys) return void openWeb(a.web);   // buka langsung dengan teks terisi
   if (a.sys && MOBILE && navigator.share) return void navigator.share({ text: "Kirim pesan anonim ke @" + n, url: u }).catch(() => {});
   copyTxt(a.txt || u);
@@ -375,21 +391,21 @@ function runShare(n, a, st){
 }
 function socialRow(name){
   const st = el("p", { class: "msg", role: "status", style: "margin:0 0 8px;min-height:0" });
-  const opts = el("div", { class: "socopt", hidden: "" }), row = el("div", { class: "soc" });
+  const opts = el("div", { class: "socopt", hidden: "" }), row = el("div", { class: "soc" }), tb = el("div", { class: "tut", hidden: "" });
   let cur = null;
   PLAT(name).forEach(p => {
     const b = el("button", { class: "ib", type: "button", "aria-label": p.name, "aria-pressed": "false" }, ico(p.k));
     b.onclick = () => {
-      const was = cur === p; cur = was ? null : p; say(st, "");
+      const was = cur === p; cur = was ? null : p; say(st, ""); tb.hidden = true;
       row.querySelectorAll(".ib").forEach(x => x.setAttribute("aria-pressed", "false"));
       if (was) return void (opts.hidden = true);
       b.setAttribute("aria-pressed", "true");
-      opts.replaceChildren(...p.o.map(([t, a]) => el("button", { class: "pill", type: "button", style: "border-color:var(--ink)", onclick: () => runShare(name, a, st) }, t)));
+      opts.replaceChildren(...p.o.map(([t, a]) => el("button", { class: "pill", type: "button", style: "border-color:var(--ink)", onclick: () => runShare(name, a, st, tb) }, t)));
       opts.hidden = false;
     };
     row.append(b);
   });
-  return el("div", {}, row, opts, st);
+  return el("div", {}, row, opts, st, tb);
 }
 
 /* ---------- Animasi pesawat kertas ---------- */
