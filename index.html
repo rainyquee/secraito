@@ -33,6 +33,14 @@ a{color:inherit}a,button{touch-action:manipulation;-webkit-tap-highlight-color:t
 .dmenu a{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:44px;padding:8px 14px;border-radius:12px;font:700 1rem/1.3 Archivo,sans-serif;font-stretch:87%;text-decoration:none}
 .dmenu a:hover,.dmenu a:focus-visible{background:var(--sun)}
 .dmenu a span{opacity:.55}
+.dsug{position:absolute;top:calc(100% + 10px);right:0;width:min(320px,100%);max-height:60vh;overflow:auto;padding:6px}
+.dsug[hidden]{display:none}
+.sg{display:block;width:100%;min-height:44px;padding:8px 14px;border:0;border-radius:12px;background:transparent;color:var(--ink);font:700 1rem/1.3 Archivo,sans-serif;text-align:left;word-break:break-all;cursor:pointer}
+.sg:hover,.sg.on,.sg:focus-visible{background:var(--sun)}
+.sgn{margin:0;padding:10px 14px;font-size:.92rem;font-weight:600}
+.setrow{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:14px 0 0}
+.setrow .lbl{margin:0 0 2px}.setrow .hint{margin:0}
+.setrow .opt{flex:none;min-width:78px;min-height:40px}
 .pill{display:inline-block;padding:6px 14px;border:2px solid transparent;border-radius:99px;background:transparent;color:var(--ink);font:700 .9rem/1.3 Archivo,sans-serif;font-stretch:87%;text-decoration:none;cursor:pointer}
 .pill:hover{background:var(--sun);border-color:var(--ink)}
 .pill.solid{background:var(--ink);color:var(--paper)}.pill.solid:hover{background:var(--coral);color:var(--ink)}
@@ -180,7 +188,11 @@ const closeMenu = () => {
   if (m) m.hidden = true;
   if (b) b.setAttribute("aria-expanded", "false");
 };
-document.addEventListener("click", e => { if (!e.target.closest(".dmenu, .dmbtn")) closeMenu(); });
+const closeSug = () => { const x = document.querySelector(".dsug"); if (x){ x.hidden = true; x.replaceChildren(); } };
+document.addEventListener("click", e => {
+  if (!e.target.closest(".dmenu, .dmbtn")) closeMenu();
+  if (!e.target.closest(".dsug, .dsearch")) closeSug();
+});
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeMenu(); });
 
 const dock = () => {
@@ -189,33 +201,65 @@ const dock = () => {
   const logo = el("a", { class: "logo", href: "./", "aria-label": "Kembali ke beranda" },
     el("img", { onerror: ev => ev.target.replaceWith(el("span", { class: "logotxt" }, "kotak rahasia")), src: "logo.png", alt: "Kotak rahasia", width: "132", height: "38" }));
 
-  // cari username
+  // cari username + saran
   const inp = el("input", { type: "text", maxlength: "21", placeholder: "cari username", enterkeyhint: "search", autocapitalize: "off", autocomplete: "off", spellcheck: "false", "aria-label": "Cari username" });
   const sBtn = el("button", { class: "ib", type: "button", "aria-label": "Cari username" }, ico("search"));
-  const closeSearch = () => { d.classList.remove("sq"); inp.value = ""; };
+  const sug = el("div", { class: "box dsug", hidden: "" });
+  let seq = 0, tmr = null, act = -1;
+  const hideSug = () => { act = -1; closeSug(); };
+  const closeSearch = () => { clearTimeout(tmr); seq++; hideSug(); d.classList.remove("sq"); inp.value = ""; };
+  const norm = () => inp.value.trim().toLowerCase().replace(/^@/, "");
+  const pick = u => { location.href = shareUrl(u); };
+  const items = () => [...sug.querySelectorAll(".sg")];
+  const mark = () => items().forEach((b, i) => b.classList.toggle("on", i === act));
+  const showSug = (list, q) => {
+    act = -1;
+    sug.replaceChildren(...(list.length
+      ? list.map(u => el("button", { class: "sg", type: "button", onclick: () => pick(u) }, "@" + u))
+      : [el("p", { class: "sgn" }, "Tidak ada saran untuk \u201C" + q + "\u201D. Tekan Enter untuk membuka langsung.")]));
+    sug.hidden = false;
+  };
+  inp.oninput = () => {
+    clearTimeout(tmr);
+    const q = norm(), my = ++seq;
+    if (!/^[a-z0-9_]{1,20}$/.test(q)) return hideSug();
+    tmr = setTimeout(async () => {
+      const { data, error } = await sb.rpc("search_usernames", { p_prefix: q });
+      if (my !== seq) return;
+      if (error || !Array.isArray(data)) return hideSug();   // fungsi belum dipasang: tanpa saran, pencarian tetap jalan
+      showSug(data, q);
+    }, 250);
+  };
   const go = () => {
-    const u = inp.value.trim().toLowerCase().replace(/^@/, "");
+    const u = norm();
+    clearTimeout(tmr); seq++; hideSug();
     if (!USER_RE.test(u)){
       inp.value = ""; inp.classList.add("bad"); inp.placeholder = "3–20: huruf kecil, angka, _";
       setTimeout(() => { inp.classList.remove("bad"); inp.placeholder = "cari username"; }, 2200);
       return;
     }
-    location.href = shareUrl(u);
+    pick(u);
   };
   sBtn.onclick = () => {
     closeMenu();
     if (!d.classList.contains("sq")){ d.classList.add("sq"); inp.focus(); return; }
     inp.value.trim() ? go() : closeSearch();
   };
-  inp.onkeydown = e => { if (e.key === "Enter") go(); else if (e.key === "Escape") closeSearch(); };
+  inp.onkeydown = e => {
+    const it = items();
+    if (e.key === "ArrowDown" && it.length){ e.preventDefault(); act = (act + 1) % it.length; mark(); }
+    else if (e.key === "ArrowUp" && it.length){ e.preventDefault(); act = (act - 1 + it.length) % it.length; mark(); }
+    else if (e.key === "Enter"){ if (act >= 0 && it[act]) pick(it[act].textContent.slice(1)); else go(); }
+    else if (e.key === "Escape") closeSearch();
+  };
 
   // menu tiga garis
   const menu = el("nav", { class: "box dmenu", id: "dmenu", hidden: "", "aria-label": "Menu" },
     MENU_LINKS.map(([t, h]) => el("a", { href: h, target: "_blank", rel: "noopener noreferrer" }, t, el("span", { "aria-hidden": "true" }, "↗"))));
   const mBtn = el("button", { class: "ib dmbtn", type: "button", "aria-label": "Menu", "aria-expanded": "false", "aria-controls": "dmenu" }, ico("menu"));
-  mBtn.onclick = () => { const open = menu.hidden; menu.hidden = !open; mBtn.setAttribute("aria-expanded", String(open)); };
+  mBtn.onclick = () => { hideSug(); const open = menu.hidden; menu.hidden = !open; mBtn.setAttribute("aria-expanded", String(open)); };
 
-  d.append(logo, el("div", { class: "dr" }, el("div", { class: "dsearch" }, inp), sBtn, mBtn), menu);
+  d.append(logo, el("div", { class: "dr" }, el("div", { class: "dsearch" }, inp), sBtn, mBtn), menu, sug);
   return d;
 };
 
@@ -918,11 +962,12 @@ function visitorView(name, data){
       after: usePw ? r => { if (r.data && r.data.thread) rememberPw(name, r.data.thread, pw); } : null });
   };
 
-  const lock = el("div", { class: "box note" }, "Kirim satu pesan dulu untuk membaca pesan lain di kotak ini.");
+  const priv = data.private === true;   // kotak privat: hanya pemilik yang membaca semua pesan
+  const lock = el("div", { class: "box note" }, priv ? "Kotak ini privat. Hanya @" + name + " yang bisa membaca pesan di sini." : "Kirim satu pesan dulu untuk membaca pesan lain di kotak ini.");
   const egg = el("p", { class: "msg", role: "status" });
   const thread = data.can_view
-    ? [el("div", { class: "sh" }, el("h2", {}, "Pesan di kotak ini"), el("button", { class: "pill", type: "button", onclick: () => threadPage(name) }, "Muat ulang")),
-       ...(data.messages.length ? msgBlocks(data.messages).map(bl => threadCard(bl, name, false, null, null)) : [el("p", {}, "Belum ada pesan.")])]
+    ? [...(priv ? [lock] : []), el("div", { class: "sh" }, el("h2", {}, priv ? "Pesanmu di kotak ini" : "Pesan di kotak ini"), el("button", { class: "pill", type: "button", onclick: () => threadPage(name) }, "Muat ulang")),
+       ...(data.messages.length ? msgBlocks(data.messages).map(bl => threadCard(bl, name, false, null, null)) : [el("p", {}, priv ? "Kamu belum mengirim pesan di sini." : "Belum ada pesan.")])]
     : [lock, egg];
   const title = el("h1", { class: "name", style: "user-select:none;-webkit-user-select:none;touch-action:manipulation" }, "@" + name);
   show(dock(), page(
@@ -932,7 +977,7 @@ function visitorView(name, data){
     ...(data.can_view ? [] : [resumePanel(name)]),
     ...(wallEl ? [wallEl] : []),
     ...thread));
-  if (!data.can_view){
+  if (!data.can_view && !priv){
     let taps = 0, last = 0;   // easter egg 1: ketuk @username 5 kali cepat
     title.onclick = () => {
       const now = Date.now(); taps = now - last < 1200 ? taps + 1 : 1; last = now;
@@ -941,6 +986,35 @@ function visitorView(name, data){
     };
     armShake(() => unlockThread(name, lock.getBoundingClientRect(), egg));   // easter egg 2: kocok HP
   }
+}
+
+/* ---------- Pengaturan kotak (pemilik): privat & sembunyikan dari pencarian ---------- */
+function settingsPanel(name, key, data){
+  const st = el("p", { class: "msg", role: "status" });
+  const row = (title, hint, field, init, warnOff) => {
+    let on = !!init;
+    const b = el("button", { class: "opt", type: "button", "aria-pressed": String(on) }, on ? "Aktif" : "Mati");
+    b.onclick = async () => {
+      if (warnOff && on && !confirm(warnOff)) return;
+      const next = !on;
+      b.disabled = true; say(st, "");
+      const { error } = await sb.rpc("set_box_options", {
+        p_username: name, p_key: key,
+        p_private: field === "private" ? next : null,
+        p_hidden: field === "hidden" ? next : null });
+      b.disabled = false;
+      if (error) return say(st, error.code === "PGRST202" ? "Fitur ini belum dipasang di server. Jalankan SQL-nya dulu." : "Gagal menyimpan. Coba lagi.");
+      on = next; b.setAttribute("aria-pressed", String(on)); b.textContent = on ? "Aktif" : "Mati";
+      say(st, "Tersimpan.", true);
+    };
+    return el("div", { class: "setrow" }, el("div", {}, el("span", { class: "lbl" }, title), el("p", { class: "hint" }, hint)), b);
+  };
+  return el("div", { class: "box compose", style: "margin-top:22px" },
+    el("span", { class: "lbl", style: "font-size:1.15rem" }, "Pengaturan kotak"),
+    row("Kotak privat", "Aktif: hanya kamu yang bisa membaca pesan. Pengirim hanya melihat pesannya sendiri dan balasanmu untuknya.", "private", data.private,
+        "Ubah jadi umum? Pesan lama jadi bisa dibaca siapa saja yang sudah mengirim pesan ke kotak ini."),
+    row("Sembunyikan dari pencarian", "Aktif: usernamemu tidak muncul di saran pencarian. Orang yang tahu tautanmu tetap bisa membuka kotak.", "hidden", data.hidden, null),
+    st);
 }
 
 /* ---------- Tampilan pemilik ---------- */
@@ -961,6 +1035,7 @@ function ownerView(name, key, data){
       copyRow("Tautan untuk dibagikan", shareUrl(name), "Tempel di bio atau status. Siapa saja bisa mengirim pesan lewat tautan ini."),
       copyRow("Tautan pribadi", shareUrl(name) + "#k=" + key, "Jangan dibagikan. Buka tautan ini di HP atau laptop lain agar bisa membalas dari sana. Simpan juga kalau-kalau data browser terhapus.", "priv")),
     el("div", { style: "margin:-6px 0 0" }, notifRow(), el("p", { class: "hint", style: "margin:8px 0 0" }, "Pesan baru muncul sendiri selama kotakmu terbuka di tab browser.")),
+    ...(typeof data.private === "boolean" ? [settingsPanel(name, key, data)] : []),   // tampil setelah SQL privat dipasang
     el("div", { class: "sh" }, el("h2", {}, "Pesan masuk (" + data.messages.length + ")"), el("button", { class: "pill", type: "button", onclick: () => threadPage(name) }, "Muat ulang")),
     ...(data.messages.length ? msgBlocks(data.messages).map(bl => threadCard(bl, name, true, key, seen)) : [el("div", { class: "box note" }, "Belum ada pesan. Bagikan tautanmu dulu.")]),
     ...(wallEl ? [wallEl] : []),
