@@ -131,6 +131,22 @@ time{font-size:.85rem;font-weight:600}
 .sheet{width:min(94vw,400px);max-height:94vh;overflow:auto;padding:16px}
 .sheet img{display:block;width:100%;height:auto;border:3px solid var(--ink);border-radius:12px;margin-bottom:12px;background:var(--paper)}
 .sheet .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.lk{display:flex;align-items:center;gap:8px;min-height:50px;margin:0 0 12px;padding:4px 5px 4px 14px;border:3px solid var(--ink);border-radius:99px;background:var(--card);box-shadow:3px 3px 0 var(--ink)}
+.lk.priv{background:var(--sunS)}
+.lk>span:first-child{flex:none}.lk svg{width:20px;height:20px}
+.lk .v{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 .95rem/1.2 Archivo,sans-serif}
+.lk small{font-weight:600;opacity:.6}
+.lk .ib{width:38px;height:38px}
+.soc{display:flex;gap:8px;margin:0 0 10px}
+.soc .ib{border-color:var(--ink);background:var(--card);box-shadow:2px 2px 0 var(--ink)}
+.soc .ib[aria-pressed="true"]{background:var(--iris)}
+.socopt{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}.socopt[hidden]{display:none}
+.acts{justify-content:flex-end;align-items:center;margin-top:6px}
+.kwrap{position:relative}
+.kmenu{position:absolute;z-index:12;top:calc(100% + 6px);right:0;min-width:190px;padding:6px}
+.kmenu[hidden]{display:none}
+.kitem{display:block;width:100%;min-height:42px;padding:8px 12px;border:0;border-radius:10px;background:transparent;color:var(--ink);font:700 .95rem/1.3 Archivo,sans-serif;text-align:left;cursor:pointer}
+.kitem:hover,.kitem:focus-visible{background:var(--sun)}
 </style>
 </head>
 <body>
@@ -173,9 +189,22 @@ function el(tag, attrs = {}, ...kids){
 const show = (...n) => { disarmShake(); disarmWatch(); $app.replaceChildren(...n); };
 const page = (...k) => el("main", { class: "wrap pg" }, ...k);
 const say = (e,t,ok) => { e.textContent = t; e.className = "msg" + (ok ? " ok" : ""); };
+const S = d => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
 const ICON = {
   search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/></svg>',
-  menu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>'
+  menu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>',
+  nut: S('<path d="M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z"/><circle cx="12" cy="12" r="3"/>'),
+  dots: S('<g fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></g>'),
+  share: S('<circle cx="18" cy="5.5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="18.5" r="2.6"/><path d="M8.3 10.8l7.4-4.1M8.3 13.2l7.4 4.1"/>'),
+  copy: S('<rect x="9" y="9" width="11" height="11" rx="3"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>'),
+  check: S('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
+  link: S('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'),
+  key: S('<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3"/>'),
+  ig: S('<rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17" cy="7" r=".8" fill="currentColor"/>'),
+  x: S('<path d="M4 4l16 16M20 4l-6.8 6.8M4 20l6.8-6.8"/>'),
+  wa: S('<path d="M3.5 20.5l1.4-4.3A8.5 8.5 0 1 1 8 19.3z"/><path d="M9 8.5c0 3.3 2.7 6 6 6l1.2-1.5-2-1-.9.8a4 4 0 0 1-1.9-1.9l.8-.9-1-2z"/>'),
+  tt: S('<path d="M14 3v11a3.5 3.5 0 1 1-3.5-3.5M14 3c.3 2.6 2 4.3 5 4.6"/>'),
+  fb: S('<path d="M14 21v-8h3l.5-3.5H14V7.7c0-1 .4-1.7 1.8-1.7H18V3.2c-.4-.1-1.6-.2-3-.2-3 0-4.8 1.8-4.8 4.9v1.6H7.5V13h2.7v8z"/>')
 };
 const ico = k => { const s = el("span", { "aria-hidden": "true", style: "display:flex" }); s.innerHTML = ICON[k]; return s; };
 const MENU_LINKS = [
@@ -189,13 +218,27 @@ const closeMenu = () => {
   if (b) b.setAttribute("aria-expanded", "false");
 };
 const closeSug = () => { const x = document.querySelector(".dsug"); if (x){ x.hidden = true; x.replaceChildren(); } };
+const closeKm = () => document.querySelectorAll(".kwrap").forEach(w => { w.lastChild.hidden = true; w.firstChild.setAttribute("aria-expanded", "false"); });
 document.addEventListener("click", e => {
   if (!e.target.closest(".dmenu, .dmbtn")) closeMenu();
   if (!e.target.closest(".dsug, .dsearch")) closeSug();
+  if (!e.target.closest(".kwrap")) closeKm();
 });
-document.addEventListener("keydown", e => { if (e.key === "Escape") closeMenu(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape"){ closeMenu(); closeKm(); } });
+// titik tiga: getItems() mengembalikan [[label, fungsi], ...] dan dibaca ulang tiap dibuka
+function kebab(getItems){
+  const m = el("div", { class: "box kmenu", hidden: "" });
+  const b = el("button", { class: "ib", type: "button", "aria-label": "Opsi lainnya", "aria-haspopup": "true", "aria-expanded": "false" }, ico("dots"));
+  b.onclick = () => {
+    const open = m.hidden; closeKm(); if (!open) return;
+    m.replaceChildren(...getItems().map(([t, f]) => el("button", { class: "kitem", type: "button", onclick: () => { closeKm(); f(); } }, t)));
+    m.hidden = false; b.setAttribute("aria-expanded", "true");
+  };
+  return el("div", { class: "kwrap" }, b, m);
+}
+const shareBtn = f => el("button", { class: "ib", type: "button", "aria-label": "Bagikan sebagai gambar", title: "Bagikan", onclick: f }, ico("share"));
 
-const dock = () => {
+const dock = onSet => {
   const d = el("header", { class: "dock" });
   // logo kiri atas = kembali ke beranda (logo.png diunggah ke folder yang sama dengan stabil.html)
   const logo = el("a", { class: "logo", href: "./", "aria-label": "Kembali ke beranda" },
@@ -259,18 +302,57 @@ const dock = () => {
   const mBtn = el("button", { class: "ib dmbtn", type: "button", "aria-label": "Menu", "aria-expanded": "false", "aria-controls": "dmenu" }, ico("menu"));
   mBtn.onclick = () => { hideSug(); const open = menu.hidden; menu.hidden = !open; mBtn.setAttribute("aria-expanded", String(open)); };
 
-  d.append(logo, el("div", { class: "dr" }, el("div", { class: "dsearch" }, inp), sBtn, mBtn), menu, sug);
+  const gBtn = onSet ? el("button", { class: "ib", type: "button", "aria-label": "Pengaturan kotak", onclick: () => { closeMenu(); hideSug(); onSet(); } }, ico("nut")) : null;
+  d.append(logo, el("div", { class: "dr" }, el("div", { class: "dsearch" }, inp), sBtn, gBtn, mBtn), menu, sug);
   return d;
 };
 
-function copyRow(label, value, note, cls = ""){
-  const i = el("input", { readonly: "readonly", value, "aria-label": label });
-  const b = el("button", { class: "btn alt", type: "button" }, "Salin");
+function linkRow(icon, label, value, cls, aria, sub, tip){
+  const b = el("button", { class: "ib", type: "button", "aria-label": aria }, ico("copy"));
   b.onclick = async () => {
-    try { await navigator.clipboard.writeText(value); b.textContent = "Tersalin"; setTimeout(() => b.textContent = "Salin", 1600); }
-    catch { i.select(); }
+    try { await navigator.clipboard.writeText(value); b.replaceChildren(ico("check")); setTimeout(() => b.replaceChildren(ico("copy")), 1600); }
+    catch { prompt("Salin tautan:", value); }
   };
-  return el("div", { class: "box cp " + cls }, el("span", { class: "lbl" }, label), note && el("p", { class: "hint" }, note), el("div", { class: "cprow" }, i, b));
+  return el("div", { class: "lk " + (cls || ""), title: tip || null }, ico(icon), el("span", { class: "v" }, label, sub && el("small", {}, " · " + sub)), b);
+}
+
+// opsi bagikan per platform: go = buka tautan dengan teks terisi; copy = salin tautan lalu buka halamannya; sys = menu bagikan bawaan HP
+const PLAT = n => {
+  const u = shareUrl(n), t = "Kirim pesan anonim ke @" + n + " \u{1F92B}", e = encodeURIComponent, q = e(t + " " + u);
+  const cp = (open, tip) => ({ copy: open, tip }), go = href => ({ go: href }), sys = { sys: 1 };
+  return [
+    { k: "ig", name: "Instagram", o: [["Bio", cp("https://www.instagram.com/accounts/edit/", "Tempel di kolom Situs web")], ["Story", cp("https://www.instagram.com/", "Tempel sebagai stiker tautan")], ["DM", sys]] },
+    { k: "x", name: "X", o: [["Bio", cp("https://x.com/settings/profile", "Tempel di kolom Situs web")], ["Tweet", go("https://twitter.com/intent/tweet?text=" + e(t) + "&url=" + e(u))], ["DM", go("https://twitter.com/messages/compose?text=" + q)]] },
+    { k: "wa", name: "WhatsApp", o: [["Bio", cp("https://wa.me/", "Tempel di Info")], ["DM", go("https://wa.me/?text=" + q)], ["Status", cp("https://wa.me/", "Tempel di status")]] },
+    { k: "tt", name: "TikTok", o: [["Bio", cp("https://www.tiktok.com/", "Tempel di Bio")], ["DM", sys]] },
+    { k: "fb", name: "Facebook", o: [["Messenger", go("fb-messenger://share?link=" + e(u))], ["Post", go("https://www.facebook.com/sharer/sharer.php?u=" + e(u))], ["Bio", cp("https://www.facebook.com/me", "Tempel di Tautan")]] }
+  ];
+};
+function runShare(n, a, st){
+  const u = shareUrl(n);
+  if (a.go) return void window.open(a.go, "_blank", "noopener");
+  if (a.sys && navigator.share) return void navigator.share({ text: "Kirim pesan anonim ke @" + n, url: u }).catch(() => {});
+  try { navigator.clipboard.writeText(u).catch(() => {}); } catch {}
+  say(st, "Tautan disalin. " + (a.tip || "Tempel di aplikasinya") + ".", true);
+  if (a.copy) window.open(a.copy, "_blank", "noopener");
+}
+function socialRow(name){
+  const st = el("p", { class: "msg", role: "status", style: "margin:0 0 8px;min-height:0" });
+  const opts = el("div", { class: "socopt", hidden: "" }), row = el("div", { class: "soc" });
+  let cur = null;
+  PLAT(name).forEach(p => {
+    const b = el("button", { class: "ib", type: "button", "aria-label": p.name, "aria-pressed": "false" }, ico(p.k));
+    b.onclick = () => {
+      const was = cur === p; cur = was ? null : p; say(st, "");
+      row.querySelectorAll(".ib").forEach(x => x.setAttribute("aria-pressed", "false"));
+      if (was) return void (opts.hidden = true);
+      b.setAttribute("aria-pressed", "true");
+      opts.replaceChildren(...p.o.map(([t, a]) => el("button", { class: "pill", type: "button", style: "border-color:var(--ink)", onclick: () => runShare(name, a, st) }, t)));
+      opts.hidden = false;
+    };
+    row.append(b);
+  });
+  return el("div", {}, row, opts, st);
 }
 
 /* ---------- Animasi pesawat kertas ---------- */
@@ -476,33 +558,23 @@ function threadCard(ms, name, owner, key, seen){
       el("span", { class: "tag i" }, "Balasan @" + name), el("p", { class: "body" }, m.reply), el("time", {}, fmt(m.replied_at))));
     if (owner){
       const slot = el("div"), acts = el("div", { class: "acts" });
-      if (m.reply){
-        const ed = el("button", { class: "pill", type: "button" }, "Ubah balasan");
-        ed.onclick = () => { ed.remove(); slot.append(replyForm(m, name, key, m.reply)); };
-        acts.append(ed);
-      } else slot.append(replyForm(m, name, key, ""));
       const pid = String(m.id), pst = el("p", { class: "msg", role: "status" });
-      const shr = el("button", { class: "pill", type: "button" }, "Bagikan sebagai gambar");
-      shr.onclick = () => shareCard(name, m.body, m.reply || "", m.id);
-      const pub = el("button", { class: "pill", type: "button" }, pubSet.has(pid) ? "Hapus dari dinding" : "Tampilkan di dinding");
-      pub.onclick = async () => {
-        const on = !pubSet.has(pid);
-        pub.disabled = true; say(pst, "");
+      const form = () => slot.replaceChildren(replyForm(m, name, key, m.reply || ""));
+      const togglePub = async () => {
+        const on = !pubSet.has(pid); say(pst, "");
         const r = asRes(await sb.rpc("publish_message", { p_username: name, p_key: key, p_id: pid, p_on: on }));
-        pub.disabled = false;
         if (r.error) return say(pst, r.error.code === "PGRST202" ? "Dinding belum dipasang di server. Jalankan SQL-nya dulu." : "Gagal mengubah dinding. Coba lagi.");
         if (on) pubSet.add(pid); else pubSet.delete(pid);
-        pub.textContent = on ? "Hapus dari dinding" : "Tampilkan di dinding";
         refreshWall(name, key, true);
       };
-      const del = el("button", { class: "pill", type: "button" }, "Hapus pesan");
-      del.onclick = async () => {
+      const del = async () => {
         if (!confirm("Hapus pesan ini beserta balasannya?")) return;
         if (pubSet.has(pid)) await sb.rpc("publish_message", { p_username: name, p_key: key, p_id: pid, p_on: false });
         const { error } = await sb.rpc("delete_message", { p_username: name, p_key: key, p_id: m.id });
         if (!error) threadPage(name);
       };
-      acts.append(shr, pub, del);
+      acts.append(shareBtn(() => shareCard(name, m.body, m.reply || "", m.id)),
+        kebab(() => [[m.reply ? "Ubah balasan" : "Balas", form], [pubSet.has(pid) ? "Hapus dari dinding" : "Tampilkan di dinding", togglePub], ["Hapus pesan", del]]));
       turn.append(slot, acts, pst);
     }
     c.append(turn);
@@ -889,19 +961,11 @@ function wallCard(name, p, owner, key){
   }));
   paint();
   const acts = el("div", { class: "acts" });
-  const shr = el("button", { class: "pill", type: "button" }, "Bagikan sebagai gambar");
-  shr.onclick = () => shareCard(name, p.body, p.reply || "", p.id);
-  acts.append(shr);
-  if (owner){
-    const off = el("button", { class: "pill", type: "button" }, "Hapus dari dinding");
-    off.onclick = async () => {
-      off.disabled = true;
-      const r = asRes(await sb.rpc("publish_message", { p_username: name, p_key: key, p_id: String(p.id), p_on: false }));
-      if (r.error){ off.disabled = false; return; }
-      refreshWall(name, key, true);
-    };
-    acts.append(off);
-  }
+  acts.append(shareBtn(() => shareCard(name, p.body, p.reply || "", p.id)));
+  if (owner) acts.append(kebab(() => [["Hapus dari dinding", async () => {
+    const r = asRes(await sb.rpc("publish_message", { p_username: name, p_key: key, p_id: String(p.id), p_on: false }));
+    if (!r.error) refreshWall(name, key, true);
+  }]]));
   c.append(rx, acts);
   return c;
 }
@@ -989,7 +1053,7 @@ function visitorView(name, data){
 }
 
 /* ---------- Pengaturan kotak (pemilik): privat & sembunyikan dari pencarian ---------- */
-function settingsPanel(name, key, data){
+function settingsPanel(name, key, data, close){
   const st = el("p", { class: "msg", role: "status" });
   const row = (title, hint, field, init, warnOff) => {
     let on = !!init;
@@ -1004,17 +1068,25 @@ function settingsPanel(name, key, data){
         p_hidden: field === "hidden" ? next : null });
       b.disabled = false;
       if (error) return say(st, error.code === "PGRST202" ? "Fitur ini belum dipasang di server. Jalankan SQL-nya dulu." : "Gagal menyimpan. Coba lagi.");
-      on = next; b.setAttribute("aria-pressed", String(on)); b.textContent = on ? "Aktif" : "Mati";
+      on = next; data[field] = on; b.setAttribute("aria-pressed", String(on)); b.textContent = on ? "Aktif" : "Mati";
       say(st, "Tersimpan.", true);
     };
     return el("div", { class: "setrow" }, el("div", {}, el("span", { class: "lbl" }, title), el("p", { class: "hint" }, hint)), b);
   };
-  return el("div", { class: "box compose", style: "margin-top:22px" },
+  return el("div", { class: "box sheet", role: "dialog", "aria-label": "Pengaturan kotak" },
     el("span", { class: "lbl", style: "font-size:1.15rem" }, "Pengaturan kotak"),
     row("Kotak privat", "Aktif: hanya kamu yang bisa membaca pesan. Pengirim hanya melihat pesannya sendiri dan balasanmu untuknya.", "private", data.private,
         "Ubah jadi umum? Pesan lama jadi bisa dibaca siapa saja yang sudah mengirim pesan ke kotak ini."),
     row("Sembunyikan dari pencarian", "Aktif: usernamemu tidak muncul di saran pencarian. Orang yang tahu tautanmu tetap bisa membuka kotak.", "hidden", data.hidden, null),
-    st);
+    st, el("button", { class: "pill", type: "button", style: "border-color:var(--ink);margin-top:10px", onclick: close }, "Tutup"));
+}
+function openSettings(name, key, data){
+  const esc = e => { if (e.key === "Escape") close(); };
+  const close = () => { modal.remove(); removeEventListener("keydown", esc); };
+  const modal = el("div", { class: "modal" }, settingsPanel(name, key, data, close));
+  modal.onclick = e => { if (e.target === modal) close(); };
+  addEventListener("keydown", esc);
+  document.body.append(modal);
 }
 
 /* ---------- Tampilan pemilik ---------- */
@@ -1028,14 +1100,14 @@ function ownerView(name, key, data){
     if (LS.get("sk_me") === name) LS.del("sk_me");
     threadPage(name);
   };
-  show(dock(), page(
+  show(dock(typeof data.private === "boolean" ? () => openSettings(name, key, data) : null), page(
     el("span", { class: "tag p" }, "Kotakmu"),
     el("h1", { class: "name", style: "margin-top:8px" }, "@" + name),
-    el("div", { style: "margin-top:24px" },
-      copyRow("Tautan untuk dibagikan", shareUrl(name), "Tempel di bio atau status. Siapa saja bisa mengirim pesan lewat tautan ini."),
-      copyRow("Tautan pribadi", shareUrl(name) + "#k=" + key, "Jangan dibagikan. Buka tautan ini di HP atau laptop lain agar bisa membalas dari sana. Simpan juga kalau-kalau data browser terhapus.", "priv")),
-    el("div", { style: "margin:-6px 0 0" }, notifRow(), el("p", { class: "hint", style: "margin:8px 0 0" }, "Pesan baru muncul sendiri selama kotakmu terbuka di tab browser.")),
-    ...(typeof data.private === "boolean" ? [settingsPanel(name, key, data)] : []),   // tampil setelah SQL privat dipasang
+    el("div", { style: "margin-top:22px" },
+      linkRow("link", shareUrl(name).replace(/^https?:\/\//, ""), shareUrl(name), "", "Salin tautan"),
+      socialRow(name),
+      linkRow("key", "Tautan pribadi", shareUrl(name) + "#k=" + key, "priv", "Salin tautan pribadi", "jangan dibagikan", "Buka tautan ini di HP atau laptop lain agar bisa membalas dari sana. Simpan juga kalau data browser terhapus.")),
+    el("div", { style: "margin:0 0 4px" }, notifRow()),
     el("div", { class: "sh" }, el("h2", {}, "Pesan masuk (" + data.messages.length + ")"), el("button", { class: "pill", type: "button", onclick: () => threadPage(name) }, "Muat ulang")),
     ...(data.messages.length ? msgBlocks(data.messages).map(bl => threadCard(bl, name, true, key, seen)) : [el("div", { class: "box note" }, "Belum ada pesan. Bagikan tautanmu dulu.")]),
     ...(wallEl ? [wallEl] : []),
