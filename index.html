@@ -896,8 +896,8 @@ async function makeCard(name, body, reply, id, turns){
     g.restore();
   };
   // isi
+  const PAD = 56, BW = 940, TW = BW - PAD * 2, CH = 56;   // di luar blok if/else: kaki kartu juga memakai BW
   if (turns) drawChain(); else {
-  const PAD = 56, BW = 940, TW = BW - PAD * 2, CH = 56;
   const mf = fit(body, TW, reply ? 480 : 980, "800", 76, 34);
   const rf = reply ? fit(reply, TW, 340, "700", 58, 30) : null;
   const mh = PAD + CH + 30 + mf.lines.length * mf.lh + PAD;
