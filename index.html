@@ -184,9 +184,9 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") closeMenu();
 
 const dock = () => {
   const d = el("header", { class: "dock" });
-  // logo kiri atas = kembali ke beranda (logo.jpg diunggah ke folder yang sama dengan stabil.html)
+  // logo kiri atas = kembali ke beranda (logo.png diunggah ke folder yang sama dengan stabil.html)
   const logo = el("a", { class: "logo", href: "./", "aria-label": "Kembali ke beranda" },
-    el("img", { onerror: ev => ev.target.replaceWith(el("span", { class: "logotxt" }, "kotak rahasia")), src: "logo.jpg", alt: "Kotak rahasia", width: "40", height: "40" }));
+    el("img", { onerror: ev => ev.target.replaceWith(el("span", { class: "logotxt" }, "kotak rahasia")), src: "logo.png", alt: "Kotak rahasia", width: "40", height: "40" }));
 
   // cari username
   const inp = el("input", { type: "text", maxlength: "21", placeholder: "cari username", enterkeyhint: "search", autocapitalize: "off", autocomplete: "off", spellcheck: "false", "aria-label": "Cari username" });
